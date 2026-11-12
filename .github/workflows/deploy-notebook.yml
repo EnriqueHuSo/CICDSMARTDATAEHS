@@ -322,11 +322,7 @@ jobs:
                   existing_cluster_id: $cluster,
                   timeout_seconds: 3600,
                   depends_on: [
-                    {task_key: "bronze_almacenes"},
-                    {task_key: "bronze_clientes"},
-                    {task_key: "bronze_inventario"},
-                    {task_key: "bronze_productos"},
-                    {task_key: "bronze_ventas"}
+                    {task_key: "bronze_almacenes"}
                   ]
                 },
                 {
@@ -343,32 +339,7 @@ jobs:
                   existing_cluster_id: $cluster,
                   timeout_seconds: 3600,
                   depends_on: [
-                    {task_key: "bronze_almacenes"},
-                    {task_key: "bronze_clientes"},
-                    {task_key: "bronze_inventario"},
-                    {task_key: "bronze_productos"},
-                    {task_key: "bronze_ventas"}
-                  ]
-                },
-                {
-                  task_key: "silver_inventario",
-                  notebook_task: {
-                    notebook_path: ($base + "/3.Transformacion_Silver_Inventario"),
-                    source: "WORKSPACE",
-                    base_parameters: {
-                      containerDataLake: "datalake",
-                      storageName: "stproyectofinalehs",
-                      catalogo: "dbw_proyecto_final_ehs"
-                    }
-                  },
-                  existing_cluster_id: $cluster,
-                  timeout_seconds: 3600,
-                  depends_on: [
-                    {task_key: "bronze_almacenes"},
-                    {task_key: "bronze_clientes"},
-                    {task_key: "bronze_inventario"},
-                    {task_key: "bronze_productos"},
-                    {task_key: "bronze_ventas"}
+                    {task_key: "bronze_clientes"}
                   ]
                 },
                 {
@@ -385,11 +356,25 @@ jobs:
                   existing_cluster_id: $cluster,
                   timeout_seconds: 3600,
                   depends_on: [
-                    {task_key: "bronze_almacenes"},
-                    {task_key: "bronze_clientes"},
+                    {task_key: "bronze_productos"}
+                  ]
+                },
+                {
+                  task_key: "silver_inventario",
+                  notebook_task: {
+                    notebook_path: ($base + "/3.Transformacion_Silver_Inventario"),
+                    source: "WORKSPACE",
+                    base_parameters: {
+                      containerDataLake: "datalake",
+                      storageName: "stproyectofinalehs",
+                      catalogo: "dbw_proyecto_final_ehs"
+                    }
+                  },
+                  existing_cluster_id: $cluster,
+                  timeout_seconds: 3600,
+                  depends_on: [
                     {task_key: "bronze_inventario"},
-                    {task_key: "bronze_productos"},
-                    {task_key: "bronze_ventas"}
+                    {task_key: "bronze_productos"}
                   ]
                 },
                 {
@@ -408,7 +393,6 @@ jobs:
                   depends_on: [
                     {task_key: "bronze_almacenes"},
                     {task_key: "bronze_clientes"},
-                    {task_key: "bronze_inventario"},
                     {task_key: "bronze_productos"},
                     {task_key: "bronze_ventas"}
                   ]

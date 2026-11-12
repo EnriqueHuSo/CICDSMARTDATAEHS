@@ -1,0 +1,586 @@
+name: Deploy Databricks ETL to Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: databricks-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Export, deploy and execute ETL
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      ORIGIN_HOST: ${{ secrets.DATABRICKS_ORIGIN_HOST }}
+      ORIGIN_TOKEN: ${{ secrets.DATABRICKS_ORIGIN_TOKEN }}
+      DEST_HOST: ${{ secrets.DATABRICKS_DEST_HOST }}
+      DEST_TOKEN: ${{ secrets.DATABRICKS_DEST_TOKEN }}
+      SOURCE_BASE: /Workspace/Users/enrique010221@outlook.com/CICDSMARTDATAEHS/proceso
+      DEST_BASE: /proyecto_final_databricks/proceso
+      WORKFLOW_NAME: WF_ADB
+      CLUSTER_NAME: ClusterSD
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install utilities
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq curl
+
+      - name: Validate required secrets and configuration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for name in ORIGIN_HOST ORIGIN_TOKEN DEST_HOST DEST_TOKEN; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "ERROR: falta configurar el secreto asociado a $name."
+              exit 1
+            fi
+          done
+          ORIGIN_HOST="${ORIGIN_HOST%/}"
+          DEST_HOST="${DEST_HOST%/}"
+          echo "ORIGIN_HOST=$ORIGIN_HOST" >> "$GITHUB_ENV"
+          echo "DEST_HOST=$DEST_HOST" >> "$GITHUB_ENV"
+
+      - name: Export notebooks from development Workspace
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p notebooks_to_deploy
+
+          notebooks=(
+            "1.Preparacion_Ambiente"
+            "2.Ingesta_Bronze_Almacenes"
+            "2.Ingesta_Bronze_Clientes"
+            "2.Ingesta_Bronze_Inventario"
+            "2.Ingesta_Bronze_Productos"
+            "2.Ingesta_Bronze_Ventas"
+            "3.Transformacion_Silver_Almacenes"
+            "3.Transformacion_Silver_Clientes"
+            "3.Transformacion_Silver_Inventario"
+            "3.Transformacion_Silver_Productos"
+            "3.Transformacion_Silver_Ventas"
+            "4.Construccion_Golden_Dimensiones"
+            "4.Construccion_Golden_Fact_Inventario"
+            "4.Construccion_Golden_Fact_Ventas"
+          )
+
+          for notebook in "${notebooks[@]}"; do
+            echo "Exportando: $notebook"
+            curl --fail-with-body --silent --show-error \
+              --get \
+              --header "Authorization: Bearer $ORIGIN_TOKEN" \
+              --data-urlencode "path=$SOURCE_BASE/$notebook" \
+              --data-urlencode "format=SOURCE" \
+              --data-urlencode "direct_download=true" \
+              "$ORIGIN_HOST/api/2.0/workspace/export" \
+              --output "notebooks_to_deploy/$notebook.py"
+
+            if [[ ! -s "notebooks_to_deploy/$notebook.py" ]]; then
+              echo "ERROR: la exportación de $notebook produjo un archivo vacío."
+              exit 1
+            fi
+          done
+
+          count=$(find notebooks_to_deploy -maxdepth 1 -type f -name '*.py' | wc -l)
+          [[ "$count" -eq 14 ]] || { echo "ERROR: se esperaban 14 notebooks y se exportaron $count."; exit 1; }
+
+          # Validar que el notebook de preparación sea la versión segura del proyecto,
+          # no el notebook original del curso que elimina catálogos y carpetas.
+          prep_file="notebooks_to_deploy/1.Preparacion_Ambiente.py"
+          if grep -Eq 'dbutils\.fs\.rm[[:space:]]*\(|DROP[[:space:]]+CATALOG[[:space:]]+IF[[:space:]]+EXISTS|DROP[[:space:]]+SCHEMA[[:space:]]+IF[[:space:]]+EXISTS|catalog_au' "$prep_file"; then
+            echo "ERROR: 1.Preparacion_Ambiente parece ser el notebook antiguo del curso o contiene operaciones destructivas. Reemplázalo en Workspace por la versión segura del proyecto antes de desplegar."
+            exit 1
+          fi
+          grep -q 'dbw_proyecto_final_ehs' "$prep_file" || { echo "ERROR: el notebook de preparación no referencia el catálogo del proyecto."; exit 1; }
+          grep -q 'storageName' "$prep_file" || { echo "ERROR: el notebook de preparación no declara el parámetro storageName."; exit 1; }
+
+          # Verificar los widgets que realmente reciben base_parameters.
+          check_widget() {
+            local notebook_file="$1"
+            local widget_name="$2"
+            if ! grep -Eq "dbutils\.widgets\.(text|dropdown|combobox)\([\"']${widget_name}[\"']" "$notebook_file"; then
+              echo "ERROR: no se encontró el widget '$widget_name' en $notebook_file."
+              exit 1
+            fi
+          }
+
+          check_widget "$prep_file" "storageName"
+          for notebook in \
+            "2.Ingesta_Bronze_Almacenes" \
+            "2.Ingesta_Bronze_Clientes" \
+            "2.Ingesta_Bronze_Inventario" \
+            "2.Ingesta_Bronze_Productos" \
+            "2.Ingesta_Bronze_Ventas"; do
+            file="notebooks_to_deploy/$notebook.py"
+            for widget in containerRaw containerDataLake catalogo storageName; do
+              check_widget "$file" "$widget"
+            done
+          done
+
+          for notebook in \
+            "3.Transformacion_Silver_Almacenes" \
+            "3.Transformacion_Silver_Clientes" \
+            "3.Transformacion_Silver_Inventario" \
+            "3.Transformacion_Silver_Productos" \
+            "3.Transformacion_Silver_Ventas" \
+            "4.Construccion_Golden_Dimensiones" \
+            "4.Construccion_Golden_Fact_Inventario" \
+            "4.Construccion_Golden_Fact_Ventas"; do
+            file="notebooks_to_deploy/$notebook.py"
+            for widget in containerDataLake storageName catalogo; do
+              check_widget "$file" "$widget"
+            done
+          done
+
+          echo "Se exportaron y validaron los $count notebooks y sus widgets."
+
+      - name: Create destination folder and import notebooks
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer $DEST_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data "$(jq -n --arg path "$DEST_BASE" '{path:$path}')" \
+            "$DEST_HOST/api/2.0/workspace/mkdirs"
+
+          for file in notebooks_to_deploy/*.py; do
+            notebook=$(basename "$file" .py)
+            destination="$DEST_BASE/$notebook"
+            echo "Importando $notebook en producción..."
+            curl --fail-with-body --silent --show-error \
+              --request POST \
+              --header "Authorization: Bearer $DEST_TOKEN" \
+              --form "path=$destination" \
+              --form "format=SOURCE" \
+              --form "language=PYTHON" \
+              --form "overwrite=true" \
+              --form "content=@$file" \
+              "$DEST_HOST/api/2.0/workspace/import"
+          done
+          echo "Importación de notebooks finalizada."
+
+      - name: Find production cluster
+        id: cluster
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          response=$(curl --fail-with-body --silent --show-error \
+            --header "Authorization: Bearer $DEST_TOKEN" \
+            "$DEST_HOST/api/2.0/clusters/list")
+
+          cluster_id=$(jq -r --arg name "$CLUSTER_NAME" \
+            '[.clusters[]? | select(.cluster_name == $name) | .cluster_id][0] // empty' <<< "$response")
+
+          if [[ -z "$cluster_id" ]]; then
+            echo "ERROR: no se encontró el clúster de producción '$CLUSTER_NAME'."
+            jq -r '.clusters[]?.cluster_name' <<< "$response" || true
+            exit 1
+          fi
+
+          echo "cluster_id=$cluster_id" >> "$GITHUB_OUTPUT"
+          echo "Se utilizará el clúster existente $CLUSTER_NAME ($cluster_id)."
+
+      - name: Create or update Databricks Job WF_ADB
+        id: job
+        shell: bash
+        env:
+          CLUSTER_ID: ${{ steps.cluster.outputs.cluster_id }}
+        run: |
+          set -Eeuo pipefail
+
+          # Construcción JSON del Job con parámetros explícitos para cada capa.
+          # Se utilizan los mismos nombres de catálogo, esquemas y almacenamiento
+          # que en desarrollo; los notebooks deben declarar widgets con estos nombres.
+          jq -n \
+            --arg cluster "$CLUSTER_ID" \
+            --arg base "$DEST_BASE" \
+            '{
+              name: "WF_ADB",
+              format: "MULTI_TASK",
+              max_concurrent_runs: 1,
+              timeout_seconds: 7200,
+              tasks: [
+                {
+                  task_key: "preparacion_ambiente",
+                  notebook_task: {
+                    notebook_path: ($base + "/1.Preparacion_Ambiente"),
+                    source: "WORKSPACE",
+                    base_parameters: {
+                      storageName: "stproyectofinalehs"
+                    }
+                  },
+                  existing_cluster_id: $cluster,
+                  timeout_seconds: 3600
+                },
+
+                {
+                  task_key: "bronze_almacenes",
+                  notebook_task: {
+                    notebook_path: ($base + "/2.Ingesta_Bronze_Almacenes"),
+                    source: "WORKSPACE",
+                    base_parameters: {
+                      containerRaw: "raw",
+                      containerDataLake: "datalake",
+                      catalogo: "dbw_proyecto_final_ehs",
+                      storageName: "stproyectofinalehs"
+                    }
+                  },
+                  existing_cluster_id: $cluster,
+                  timeout_seconds: 3600,
+                  depends_on: [{task_key: "preparacion_ambiente"}]
+                },
+                {
+                  task_key: "bronze_clientes",
+                  notebook_task: {
+                    notebook_path: ($base + "/2.Ingesta_Bronze_Clientes"),
+                    source: "WORKSPACE",
+                    base_parameters: {
+                      containerRaw: "raw",
+                      containerDataLake: "datalake",
+                      catalogo: "dbw_proyecto_final_ehs",
+                      storageName: "stproyectofinalehs"
+                    }
+                  },
+                  existing_cluster_id: $cluster,
+                  timeout_seconds: 3600,
+                  depends_on: [{task_key: "preparacion_ambiente"}]
+                },
+                {
+                  task_key: "bronze_inventario",
+                  notebook_task: {
+                    notebook_path: ($base + "/2.Ingesta_Bronze_Inventario"),
+                    source: "WORKSPACE",
+                    base_parameters: {
+                      containerRaw: "raw",
+                      containerDataLake: "datalake",
+                      catalogo: "dbw_proyecto_final_ehs",
+                      storageName: "stproyectofinalehs"
+                    }
+                  },
+                  existing_cluster_id: $cluster,
+                  timeout_seconds: 3600,
+                  depends_on: [{task_key: "preparacion_ambiente"}]
+                },
+                {
+                  task_key: "bronze_productos",
+                  notebook_task: {
+                    notebook_path: ($base + "/2.Ingesta_Bronze_Productos"),
+                    source: "WORKSPACE",
+                    base_parameters: {
+                      containerRaw: "raw",
+                      containerDataLake: "datalake",
+                      catalogo: "dbw_proyecto_final_ehs",
+                      storageName: "stproyectofinalehs"
+                    }
+                  },
+                  existing_cluster_id: $cluster,
+                  timeout_seconds: 3600,
+                  depends_on: [{task_key: "preparacion_ambiente"}]
+                },
+                {
+                  task_key: "bronze_ventas",
+                  notebook_task: {
+                    notebook_path: ($base + "/2.Ingesta_Bronze_Ventas"),
+                    source: "WORKSPACE",
+                    base_parameters: {
+                      containerRaw: "raw",
+                      containerDataLake: "datalake",
+                      catalogo: "dbw_proyecto_final_ehs",
+                      storageName: "stproyectofinalehs"
+                    }
+                  },
+                  existing_cluster_id: $cluster,
+                  timeout_seconds: 3600,
+                  depends_on: [{task_key: "preparacion_ambiente"}]
+                },
+
+                {
+                  task_key: "silver_almacenes",
+                  notebook_task: {
+                    notebook_path: ($base + "/3.Transformacion_Silver_Almacenes"),
+                    source: "WORKSPACE",
+                    base_parameters: {
+                      containerDataLake: "datalake",
+                      storageName: "stproyectofinalehs",
+                      catalogo: "dbw_proyecto_final_ehs"
+                    }
+                  },
+                  existing_cluster_id: $cluster,
+                  timeout_seconds: 3600,
+                  depends_on: [
+                    {task_key: "bronze_almacenes"},
+                    {task_key: "bronze_clientes"},
+                    {task_key: "bronze_inventario"},
+                    {task_key: "bronze_productos"},
+                    {task_key: "bronze_ventas"}
+                  ]
+                },
+                {
+                  task_key: "silver_clientes",
+                  notebook_task: {
+                    notebook_path: ($base + "/3.Transformacion_Silver_Clientes"),
+                    source: "WORKSPACE",
+                    base_parameters: {
+                      containerDataLake: "datalake",
+                      storageName: "stproyectofinalehs",
+                      catalogo: "dbw_proyecto_final_ehs"
+                    }
+                  },
+                  existing_cluster_id: $cluster,
+                  timeout_seconds: 3600,
+                  depends_on: [
+                    {task_key: "bronze_almacenes"},
+                    {task_key: "bronze_clientes"},
+                    {task_key: "bronze_inventario"},
+                    {task_key: "bronze_productos"},
+                    {task_key: "bronze_ventas"}
+                  ]
+                },
+                {
+                  task_key: "silver_inventario",
+                  notebook_task: {
+                    notebook_path: ($base + "/3.Transformacion_Silver_Inventario"),
+                    source: "WORKSPACE",
+                    base_parameters: {
+                      containerDataLake: "datalake",
+                      storageName: "stproyectofinalehs",
+                      catalogo: "dbw_proyecto_final_ehs"
+                    }
+                  },
+                  existing_cluster_id: $cluster,
+                  timeout_seconds: 3600,
+                  depends_on: [
+                    {task_key: "bronze_almacenes"},
+                    {task_key: "bronze_clientes"},
+                    {task_key: "bronze_inventario"},
+                    {task_key: "bronze_productos"},
+                    {task_key: "bronze_ventas"}
+                  ]
+                },
+                {
+                  task_key: "silver_productos",
+                  notebook_task: {
+                    notebook_path: ($base + "/3.Transformacion_Silver_Productos"),
+                    source: "WORKSPACE",
+                    base_parameters: {
+                      containerDataLake: "datalake",
+                      storageName: "stproyectofinalehs",
+                      catalogo: "dbw_proyecto_final_ehs"
+                    }
+                  },
+                  existing_cluster_id: $cluster,
+                  timeout_seconds: 3600,
+                  depends_on: [
+                    {task_key: "bronze_almacenes"},
+                    {task_key: "bronze_clientes"},
+                    {task_key: "bronze_inventario"},
+                    {task_key: "bronze_productos"},
+                    {task_key: "bronze_ventas"}
+                  ]
+                },
+                {
+                  task_key: "silver_ventas",
+                  notebook_task: {
+                    notebook_path: ($base + "/3.Transformacion_Silver_Ventas"),
+                    source: "WORKSPACE",
+                    base_parameters: {
+                      containerDataLake: "datalake",
+                      storageName: "stproyectofinalehs",
+                      catalogo: "dbw_proyecto_final_ehs"
+                    }
+                  },
+                  existing_cluster_id: $cluster,
+                  timeout_seconds: 3600,
+                  depends_on: [
+                    {task_key: "bronze_almacenes"},
+                    {task_key: "bronze_clientes"},
+                    {task_key: "bronze_inventario"},
+                    {task_key: "bronze_productos"},
+                    {task_key: "bronze_ventas"}
+                  ]
+                },
+
+                {
+                  task_key: "golden_dimensiones",
+                  notebook_task: {
+                    notebook_path: ($base + "/4.Construccion_Golden_Dimensiones"),
+                    source: "WORKSPACE",
+                    base_parameters: {
+                      containerDataLake: "datalake",
+                      storageName: "stproyectofinalehs",
+                      catalogo: "dbw_proyecto_final_ehs"
+                    }
+                  },
+                  existing_cluster_id: $cluster,
+                  timeout_seconds: 3600,
+                  depends_on: [
+                    {task_key: "silver_almacenes"},
+                    {task_key: "silver_clientes"},
+                    {task_key: "silver_inventario"},
+                    {task_key: "silver_productos"},
+                    {task_key: "silver_ventas"}
+                  ]
+                },
+                {
+                  task_key: "golden_fact_inventario",
+                  notebook_task: {
+                    notebook_path: ($base + "/4.Construccion_Golden_Fact_Inventario"),
+                    source: "WORKSPACE",
+                    base_parameters: {
+                      containerDataLake: "datalake",
+                      storageName: "stproyectofinalehs",
+                      catalogo: "dbw_proyecto_final_ehs"
+                    }
+                  },
+                  existing_cluster_id: $cluster,
+                  timeout_seconds: 3600,
+                  depends_on: [{task_key: "golden_dimensiones"}]
+                },
+                {
+                  task_key: "golden_fact_ventas",
+                  notebook_task: {
+                    notebook_path: ($base + "/4.Construccion_Golden_Fact_Ventas"),
+                    source: "WORKSPACE",
+                    base_parameters: {
+                      containerDataLake: "datalake",
+                      storageName: "stproyectofinalehs",
+                      catalogo: "dbw_proyecto_final_ehs"
+                    }
+                  },
+                  existing_cluster_id: $cluster,
+                  timeout_seconds: 3600,
+                  depends_on: [{task_key: "golden_dimensiones"}]
+                }
+              ],
+              schedule: {
+                quartz_cron_expression: "0 0 8 * * ?",
+                timezone_id: "America/Lima",
+                pause_status: "PAUSED"
+              },
+              tags: {
+                environment: "production",
+                created_by: "github_actions",
+                project: "proyecto_final_databricks"
+              }
+            }' > job_config.json
+
+          task_count=$(jq '.tasks | length' job_config.json)
+          [[ "$task_count" -eq 14 ]] || { echo "ERROR: configuración con $task_count tareas; se esperaban 14."; exit 1; }
+
+          jobs=$(curl --fail-with-body --silent --show-error \
+            --header "Authorization: Bearer $DEST_TOKEN" \
+            "$DEST_HOST/api/2.1/jobs/list")
+          existing_id=$(jq -r --arg name "$WORKFLOW_NAME" \
+            '[.jobs[]? | select(.settings.name == $name) | .job_id][0] // empty' <<< "$jobs")
+
+          if [[ -n "$existing_id" ]]; then
+            echo "Actualizando Job existente ID $existing_id."
+            jq --argjson job_id "$existing_id" '{job_id:$job_id, new_settings:.}' job_config.json > job_update.json
+            curl --fail-with-body --silent --show-error \
+              --request POST --header "Authorization: Bearer $DEST_TOKEN" \
+              --header "Content-Type: application/json" --data @job_update.json \
+              "$DEST_HOST/api/2.1/jobs/reset"
+            job_id="$existing_id"
+          else
+            echo "Creando Job $WORKFLOW_NAME."
+            response=$(curl --fail-with-body --silent --show-error \
+              --request POST --header "Authorization: Bearer $DEST_TOKEN" \
+              --header "Content-Type: application/json" --data @job_config.json \
+              "$DEST_HOST/api/2.1/jobs/create")
+            job_id=$(jq -r '.job_id // empty' <<< "$response")
+          fi
+
+          [[ -n "$job_id" ]] || { echo "ERROR: Databricks no devolvió job_id."; exit 1; }
+          echo "job_id=$job_id" >> "$GITHUB_OUTPUT"
+          echo "Job $WORKFLOW_NAME listo con ID $job_id y $task_count tareas."
+
+      - name: Validate Job configuration
+        env:
+          JOB_ID: ${{ steps.job.outputs.job_id }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          details=$(curl --fail-with-body --silent --show-error \
+            --header "Authorization: Bearer $DEST_TOKEN" \
+            "$DEST_HOST/api/2.1/jobs/get?job_id=$JOB_ID")
+          actual=$(jq '.settings.tasks | length' <<< "$details")
+          [[ "$actual" -eq 14 ]] || { echo "ERROR: el Job tiene $actual tareas, se esperaban 14."; exit 1; }
+          jq -r '.settings.tasks[] | "- " + .task_key + " -> " + .notebook_task.notebook_path' <<< "$details"
+
+      - name: Execute production Job
+        id: run
+        env:
+          JOB_ID: ${{ steps.job.outputs.job_id }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          response=$(curl --fail-with-body --silent --show-error \
+            --request POST --header "Authorization: Bearer $DEST_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data "$(jq -n --argjson id "$JOB_ID" '{job_id:$id}')" \
+            "$DEST_HOST/api/2.1/jobs/run-now")
+          run_id=$(jq -r '.run_id // empty' <<< "$response")
+          [[ -n "$run_id" ]] || { echo "ERROR: no se pudo iniciar WF_ADB: $response"; exit 1; }
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "Ejecución iniciada. Job ID=$JOB_ID, Run ID=$run_id"
+          echo "URL: $DEST_HOST/jobs/$JOB_ID/runs/$run_id"
+
+      - name: Monitor production Job
+        env:
+          RUN_ID: ${{ steps.run.outputs.run_id }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          max_wait=7200
+          interval=30
+          elapsed=0
+
+          while (( elapsed < max_wait )); do
+            status=$(curl --fail-with-body --silent --show-error \
+              --header "Authorization: Bearer $DEST_TOKEN" \
+              "$DEST_HOST/api/2.1/jobs/runs/get?run_id=$RUN_ID")
+            life_cycle=$(jq -r '.state.life_cycle_state // "UNKNOWN"' <<< "$status")
+            result=$(jq -r '.state.result_state // "PENDING"' <<< "$status")
+            echo "Ejecución: $life_cycle / $result (${elapsed}s)"
+            jq -r '.tasks[]? | "  " + .task_key + ": " + (.state.life_cycle_state // "UNKNOWN") + " / " + (.state.result_state // "PENDING")' <<< "$status"
+
+            case "$life_cycle" in
+              TERMINATED)
+                if [[ "$result" == "SUCCESS" ]]; then
+                  echo "WF_ADB terminó correctamente."
+                  exit 0
+                fi
+                echo "ERROR: WF_ADB terminó con resultado $result."
+                exit 1
+                ;;
+              INTERNAL_ERROR|SKIPPED)
+                echo "ERROR: ejecución terminó con estado $life_cycle."
+                exit 1
+                ;;
+            esac
+
+            sleep "$interval"
+            elapsed=$((elapsed + interval))
+          done
+
+          echo "ERROR: se agotó el tiempo de monitoreo ($max_wait segundos). La ejecución podría continuar en Databricks."
+          exit 1
+
+      - name: Cleanup temporary files
+        if: always()
+        run: |
+          rm -rf notebooks_to_deploy job_config.json job_update.json

@@ -1,0 +1,1683 @@
+{
+  "datasets": [
+    {
+      "name": "4632ee9c",
+      "displayName": "ds_ventas_resumen",
+      "queryLines": [
+        "SELECT\r\n",
+        "    SUM(importe_bruto) AS ventas_brutas,\r\n",
+        "    SUM(importe_descuento) AS descuentos_otorgados,\r\n",
+        "    SUM(importe_neto) AS ventas_netas,\r\n",
+        "    SUM(cantidad) AS unidades_vendidas,\r\n",
+        "    COUNT(DISTINCT venta_id) AS total_transacciones,\r\n",
+        "    SUM(costo_estimado) AS costo_total_estimado,\r\n",
+        "    SUM(utilidad_bruta_estimada) AS utilidad_bruta_estimada,\r\n",
+        "    ROUND(\r\n",
+        "        100.0 * SUM(utilidad_bruta_estimada)\r\n",
+        "        / NULLIF(SUM(importe_neto), 0),\r\n",
+        "        2\r\n",
+        "    ) AS margen_bruto_estimado_pct\r\n",
+        "FROM dbw_proyecto_final_ehs.golden.fact_ventas;"
+      ],
+      "catalog": "dbw_proyecto_final_ehs",
+      "schema": "golden"
+    },
+    {
+      "name": "755a30a6",
+      "displayName": "ds_ventas_mensuales",
+      "queryLines": [
+        "SELECT\r\n",
+        "    d.anio,\r\n",
+        "    d.mes,\r\n",
+        "    d.nombre_mes,\r\n",
+        "    SUM(v.importe_bruto) AS ventas_brutas,\r\n",
+        "    SUM(v.importe_descuento) AS descuentos,\r\n",
+        "    SUM(v.importe_neto) AS ventas_netas,\r\n",
+        "    SUM(v.cantidad) AS unidades_vendidas,\r\n",
+        "    COUNT(DISTINCT v.venta_id) AS total_transacciones,\r\n",
+        "    SUM(v.utilidad_bruta_estimada) AS utilidad_bruta_estimada\r\n",
+        "FROM dbw_proyecto_final_ehs.golden.fact_ventas v\r\n",
+        "INNER JOIN dbw_proyecto_final_ehs.golden.dim_fecha d\r\n",
+        "    ON v.fecha_key = d.fecha_key\r\n",
+        "GROUP BY\r\n",
+        "    d.anio,\r\n",
+        "    d.mes,\r\n",
+        "    d.nombre_mes\r\n",
+        "ORDER BY\r\n",
+        "    d.anio,\r\n",
+        "    d.mes;"
+      ],
+      "catalog": "dbw_proyecto_final_ehs",
+      "schema": "golden"
+    },
+    {
+      "name": "b31aa83e",
+      "displayName": "ds_ventas_productos",
+      "queryLines": [
+        "SELECT\r\n",
+        "    p.producto_id,\r\n",
+        "    p.nombre_producto,\r\n",
+        "    INITCAP(TRIM(p.categoria)) AS categoria,\r\n",
+        "    p.marca,\r\n",
+        "    SUM(v.cantidad) AS unidades_vendidas,\r\n",
+        "    COUNT(DISTINCT v.venta_id) AS total_transacciones,\r\n",
+        "    SUM(v.importe_bruto) AS ventas_brutas,\r\n",
+        "    SUM(v.importe_descuento) AS descuentos,\r\n",
+        "    SUM(v.importe_neto) AS ventas_netas,\r\n",
+        "    SUM(v.costo_estimado) AS costo_total_estimado,\r\n",
+        "    SUM(v.utilidad_bruta_estimada) AS utilidad_bruta_estimada\r\n",
+        "FROM dbw_proyecto_final_ehs.golden.fact_ventas v\r\n",
+        "INNER JOIN dbw_proyecto_final_ehs.golden.dim_producto p\r\n",
+        "    ON v.producto_key = p.producto_key\r\n",
+        "GROUP BY\r\n",
+        "    p.producto_id,\r\n",
+        "    p.nombre_producto,\r\n",
+        "    INITCAP(TRIM(p.categoria)),\r\n",
+        "    p.marca\r\n",
+        "ORDER BY\r\n",
+        "    ventas_netas DESC;"
+      ]
+    },
+    {
+      "name": "37c7d4bd",
+      "displayName": "ds_ventas_clientes",
+      "queryLines": [
+        "SELECT\r\n",
+        "    c.cliente_id,\r\n",
+        "    c.nombre,\r\n",
+        "    c.tipo_cliente,\r\n",
+        "    COALESCE(c.ciudad, 'Sin ciudad') AS ciudad,\r\n",
+        "    COUNT(DISTINCT v.venta_id) AS total_transacciones,\r\n",
+        "    SUM(v.cantidad) AS unidades_compradas,\r\n",
+        "    SUM(v.importe_bruto) AS ventas_brutas,\r\n",
+        "    SUM(v.importe_descuento) AS descuentos,\r\n",
+        "    SUM(v.importe_neto) AS ventas_netas,\r\n",
+        "    SUM(v.costo_estimado) AS costo_total_estimado,\r\n",
+        "    SUM(v.utilidad_bruta_estimada) AS utilidad_bruta_estimada\r\n",
+        "FROM dbw_proyecto_final_ehs.golden.fact_ventas v\r\n",
+        "INNER JOIN dbw_proyecto_final_ehs.golden.dim_cliente c\r\n",
+        "    ON v.cliente_key = c.cliente_key\r\n",
+        "GROUP BY\r\n",
+        "    c.cliente_id,\r\n",
+        "    c.nombre,\r\n",
+        "    c.tipo_cliente,\r\n",
+        "    COALESCE(c.ciudad, 'Sin ciudad')\r\n",
+        "ORDER BY\r\n",
+        "    ventas_netas DESC;"
+      ]
+    },
+    {
+      "name": "6fb1a5ca",
+      "displayName": "ds_ventas_almacenes",
+      "queryLines": [
+        "SELECT\r\n",
+        "    a.almacen_id,\r\n",
+        "    a.nombre_almacen,\r\n",
+        "    a.ciudad,\r\n",
+        "    a.region,\r\n",
+        "    a.es_activo,\r\n",
+        "\r\n",
+        "    COUNT(DISTINCT v.venta_id) AS total_transacciones,\r\n",
+        "    SUM(v.cantidad) AS unidades_vendidas,\r\n",
+        "\r\n",
+        "    SUM(v.importe_bruto) AS ventas_brutas,\r\n",
+        "    SUM(v.importe_descuento) AS descuentos,\r\n",
+        "    SUM(v.importe_neto) AS ventas_netas,\r\n",
+        "\r\n",
+        "    SUM(v.costo_estimado) AS costo_total_estimado,\r\n",
+        "    SUM(v.utilidad_bruta_estimada) AS utilidad_bruta_estimada,\r\n",
+        "\r\n",
+        "    ROUND(\r\n",
+        "        100.0 * SUM(v.utilidad_bruta_estimada)\r\n",
+        "        / NULLIF(SUM(v.importe_neto), 0),\r\n",
+        "        2\r\n",
+        "    ) AS margen_bruto_estimado_pct\r\n",
+        "\r\n",
+        "FROM dbw_proyecto_final_ehs.golden.fact_ventas v\r\n",
+        "\r\n",
+        "INNER JOIN dbw_proyecto_final_ehs.golden.dim_almacen a\r\n",
+        "    ON v.almacen_key = a.almacen_key\r\n",
+        "\r\n",
+        "GROUP BY\r\n",
+        "    a.almacen_id,\r\n",
+        "    a.nombre_almacen,\r\n",
+        "    a.ciudad,\r\n",
+        "    a.region,\r\n",
+        "    a.es_activo\r\n",
+        "\r\n",
+        "ORDER BY\r\n",
+        "    ventas_netas DESC;"
+      ]
+    },
+    {
+      "name": "5e13915e",
+      "displayName": "Inventory Stock Levels and Critical Indicators Summary",
+      "queryLines": [
+        "SELECT\r\n",
+        "    stock_sobre_minimo,\r\n",
+        "    indicador_stock_critico,\r\n",
+        "    COUNT(*) AS total_registros\r\n",
+        "FROM dbw_proyecto_final_ehs.golden.fact_inventario\r\n",
+        "GROUP BY\r\n",
+        "    stock_sobre_minimo,\r\n",
+        "    indicador_stock_critico\r\n",
+        "ORDER BY\r\n",
+        "    indicador_stock_critico,\r\n",
+        "    stock_sobre_minimo;"
+      ]
+    },
+    {
+      "name": "ds_inventario_resumen",
+      "displayName": "ds_inventario_resumen",
+      "queryLines": [
+        "WITH ultima AS (\n",
+        "  SELECT\n",
+        "    MAX(fecha_key) AS fecha_key\n",
+        "  FROM\n",
+        "    dbw_proyecto_final_ehs.golden.fact_inventario\n",
+        ")\n",
+        "SELECT\n",
+        "  TO_DATE(CAST(i.fecha_key AS STRING), 'yyyyMMdd') AS fecha_corte,\n",
+        "  SUM(i.stock_disponible) AS stock_total_disponible,\n",
+        "  SUM(i.stock_minimo) AS stock_total_minimo,\n",
+        "  SUM(i.stock_sobre_minimo) AS stock_total_sobre_minimo,\n",
+        "  COUNT(*) AS total_combinaciones,\n",
+        "  SUM(\n",
+        "    CASE\n",
+        "      WHEN i.indicador_stock_critico = 1 THEN 1\n",
+        "      ELSE 0\n",
+        "    END\n",
+        "  ) AS combinaciones_criticas,\n",
+        "  SUM(\n",
+        "    CASE\n",
+        "      WHEN i.indicador_stock_critico = 0 THEN 1\n",
+        "      ELSE 0\n",
+        "    END\n",
+        "  ) AS combinaciones_no_criticas,\n",
+        "  ROUND(\n",
+        "    100.0\n",
+        "      * SUM(\n",
+        "        CASE\n",
+        "          WHEN i.indicador_stock_critico = 1 THEN 1\n",
+        "          ELSE 0\n",
+        "        END\n",
+        "      )\n",
+        "      / NULLIF(COUNT(*), 0),\n",
+        "    2\n",
+        "  ) AS porcentaje_critico,\n",
+        "  COUNT(DISTINCT i.producto_key) AS productos_distintos,\n",
+        "  COUNT(DISTINCT i.almacen_key) AS almacenes_distintos\n",
+        "FROM\n",
+        "  dbw_proyecto_final_ehs.golden.fact_inventario i\n",
+        "    INNER JOIN ultima u\n",
+        "      ON i.fecha_key = u.fecha_key\n",
+        "GROUP BY\n",
+        "  i.fecha_key;"
+      ]
+    },
+    {
+      "name": "ds_inventario_almacenes",
+      "displayName": "ds_inventario_almacenes",
+      "queryLines": [
+        "WITH ultima AS (\n",
+        "  SELECT\n",
+        "    MAX(fecha_key) AS fecha_key\n",
+        "  FROM\n",
+        "    dbw_proyecto_final_ehs.golden.fact_inventario\n",
+        ")\n",
+        "SELECT\n",
+        "  a.almacen_id,\n",
+        "  a.nombre_almacen,\n",
+        "  a.ciudad,\n",
+        "  a.region,\n",
+        "  SUM(i.stock_disponible) AS stock_disponible,\n",
+        "  SUM(i.stock_minimo) AS stock_minimo,\n",
+        "  SUM(i.stock_sobre_minimo) AS stock_sobre_minimo,\n",
+        "  COUNT(*) AS combinaciones,\n",
+        "  SUM(\n",
+        "    CASE\n",
+        "      WHEN i.indicador_stock_critico = 1 THEN 1\n",
+        "      ELSE 0\n",
+        "    END\n",
+        "  ) AS combinaciones_criticas,\n",
+        "  ROUND(\n",
+        "    100.0\n",
+        "      * SUM(\n",
+        "        CASE\n",
+        "          WHEN i.indicador_stock_critico = 1 THEN 1\n",
+        "          ELSE 0\n",
+        "        END\n",
+        "      )\n",
+        "      / NULLIF(COUNT(*), 0),\n",
+        "    2\n",
+        "  ) AS porcentaje_critico\n",
+        "FROM\n",
+        "  dbw_proyecto_final_ehs.golden.fact_inventario i\n",
+        "    INNER JOIN ultima u\n",
+        "      ON i.fecha_key = u.fecha_key\n",
+        "    INNER JOIN dbw_proyecto_final_ehs.golden.dim_almacen a\n",
+        "      ON i.almacen_key = a.almacen_key\n",
+        "GROUP BY\n",
+        "  a.almacen_id,\n",
+        "  a.nombre_almacen,\n",
+        "  a.ciudad,\n",
+        "  a.region\n",
+        "ORDER BY\n",
+        "  stock_disponible DESC;"
+      ]
+    },
+    {
+      "name": "ds_inventario_productos",
+      "displayName": "ds_inventario_productos",
+      "queryLines": [
+        "WITH ultima AS (\n",
+        "  SELECT\n",
+        "    MAX(fecha_key) AS fecha_key\n",
+        "  FROM\n",
+        "    dbw_proyecto_final_ehs.golden.fact_inventario\n",
+        ")\n",
+        "SELECT\n",
+        "  p.producto_id,\n",
+        "  p.nombre_producto,\n",
+        "  INITCAP(TRIM(p.categoria)) AS categoria,\n",
+        "  p.marca,\n",
+        "  SUM(i.stock_disponible) AS stock_disponible,\n",
+        "  SUM(i.stock_minimo) AS stock_minimo,\n",
+        "  SUM(i.stock_sobre_minimo) AS stock_sobre_minimo,\n",
+        "  COUNT(DISTINCT i.almacen_key) AS combinaciones,\n",
+        "  SUM(\n",
+        "    CASE\n",
+        "      WHEN i.indicador_stock_critico = 1 THEN 1\n",
+        "      ELSE 0\n",
+        "    END\n",
+        "  ) AS combinaciones_criticas,\n",
+        "  ROUND(\n",
+        "    100.0\n",
+        "      * SUM(\n",
+        "        CASE\n",
+        "          WHEN i.indicador_stock_critico = 1 THEN 1\n",
+        "          ELSE 0\n",
+        "        END\n",
+        "      )\n",
+        "      / NULLIF(COUNT(DISTINCT i.almacen_key), 0),\n",
+        "    2\n",
+        "  ) AS porcentaje_critico\n",
+        "FROM\n",
+        "  dbw_proyecto_final_ehs.golden.fact_inventario i\n",
+        "    INNER JOIN ultima u\n",
+        "      ON i.fecha_key = u.fecha_key\n",
+        "    INNER JOIN dbw_proyecto_final_ehs.golden.dim_producto p\n",
+        "      ON i.producto_key = p.producto_key\n",
+        "GROUP BY\n",
+        "  p.producto_id,\n",
+        "  p.nombre_producto,\n",
+        "  INITCAP(TRIM(p.categoria)),\n",
+        "  p.marca\n",
+        "ORDER BY\n",
+        "  stock_disponible DESC;"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "ffaf5b26",
+      "displayName": "Resumen Comercial",
+      "layout": [
+        {
+          "widget": {
+            "name": "kpi_ventas_netas",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "4632ee9c",
+                  "fields": [
+                    {
+                      "name": "ventas_netas",
+                      "expression": "`ventas_netas`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Ventas netas"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "ventas_netas",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 2
+                    },
+                    "hideGroupSeparator": false
+                  },
+                  "displayName": "Ventas netas"
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_ventas_brutas",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "4632ee9c",
+                  "fields": [
+                    {
+                      "name": "ventas_brutas",
+                      "expression": "`ventas_brutas`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Ventas brutas"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "ventas_brutas",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 2
+                    },
+                    "hideGroupSeparator": false
+                  },
+                  "displayName": "Ventas brutas"
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 0,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "bar_ventas_netas_mensual",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "755a30a6",
+                  "fields": [
+                    {
+                      "name": "nombre_mes",
+                      "expression": "`nombre_mes`"
+                    },
+                    {
+                      "name": "sum(ventas_netas)",
+                      "expression": "SUM(`ventas_netas`)"
+                    },
+                    {
+                      "name": "min(mes)",
+                      "expression": "MIN(`mes`)"
+                    }
+                  ],
+                  "disaggregated": false,
+                  "orders": [
+                    {
+                      "direction": "ASC",
+                      "expression": "MIN(`mes`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Evolución mensual de ventas netas"
+              },
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "nombre_mes",
+                  "displayName": "Mes",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "measure",
+                      "measure": {
+                        "fieldName": "min(mes)"
+                      }
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(ventas_netas)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 2
+                    },
+                    "hideGroupSeparator": false
+                  },
+                  "displayName": "Ventas netas",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 6,
+            "width": 6,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_descuentos_otorgados",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "4632ee9c",
+                  "fields": [
+                    {
+                      "name": "descuentos_otorgados",
+                      "expression": "`descuentos_otorgados`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Descuentos otorgados"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "descuentos_otorgados",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 2
+                    },
+                    "hideGroupSeparator": false
+                  },
+                  "displayName": "Descuentos otorgados"
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 0,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_margen_bruto",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "4632ee9c",
+                  "fields": [
+                    {
+                      "name": "margen_bruto_estimado_pct",
+                      "expression": "`margen_bruto_estimado_pct`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Margen bruto estimado"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "margen_bruto_estimado_pct",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 2
+                    },
+                    "hideGroupSeparator": false
+                  },
+                  "formatTemplate": "{{ @formatted }}%",
+                  "displayName": "Margen bruto estimado"
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 9,
+            "y": 0,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_unidades_vendidas",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "4632ee9c",
+                  "fields": [
+                    {
+                      "name": "unidades_vendidas",
+                      "expression": "`unidades_vendidas`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Unidades vendidas"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "unidades_vendidas",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 0
+                    },
+                    "hideGroupSeparator": false
+                  },
+                  "displayName": "Unidades vendidas"
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 3,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_total_transacciones",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "4632ee9c",
+                  "fields": [
+                    {
+                      "name": "total_transacciones",
+                      "expression": "`total_transacciones`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Total de transacciones"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "total_transacciones",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 0
+                    },
+                    "hideGroupSeparator": false
+                  },
+                  "displayName": "Total de transacciones"
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 3,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_costo_total_estimado",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "4632ee9c",
+                  "fields": [
+                    {
+                      "name": "costo_total_estimado",
+                      "expression": "`costo_total_estimado`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Costo total estimado"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "costo_total_estimado",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 2
+                    },
+                    "hideGroupSeparator": false
+                  },
+                  "displayName": "Costo total estimado"
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 3,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_utilidad_bruta_estimada",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "4632ee9c",
+                  "fields": [
+                    {
+                      "name": "utilidad_bruta_estimada",
+                      "expression": "`utilidad_bruta_estimada`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Utilidad bruta estimada"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "utilidad_bruta_estimada",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 2
+                    },
+                    "hideGroupSeparator": false
+                  },
+                  "displayName": "Utilidad bruta estimada"
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 9,
+            "y": 3,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "bar_top10_productos",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "b31aa83e",
+                  "fields": [
+                    {
+                      "name": "sum(ventas_netas)",
+                      "expression": "SUM(`ventas_netas`)"
+                    },
+                    {
+                      "name": "nombre_producto",
+                      "expression": "`nombre_producto`"
+                    }
+                  ],
+                  "disaggregated": false,
+                  "orders": [
+                    {
+                      "direction": "DESC",
+                      "expression": "SUM(`ventas_netas`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Top 10 productos por ventas netas"
+              },
+              "version": 3,
+              "mark": {
+                "colors": [
+                  "#1F6FEB"
+                ]
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "sum(ventas_netas)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 2
+                    },
+                    "hideGroupSeparator": false
+                  },
+                  "displayName": "Ventas netas",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "nombre_producto",
+                  "displayName": "Producto",
+                  "scale": {
+                    "type": "categorical",
+                    "categorySize": {
+                      "type": "number-of-categories",
+                      "number": 10
+                    },
+                    "sort": {
+                      "by": "measure-reversed",
+                      "measure": {
+                        "fieldName": "sum(ventas_netas)"
+                      }
+                    }
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 6,
+            "width": 6,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "donut_ventas_categoria",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "b31aa83e",
+                  "fields": [
+                    {
+                      "name": "ventas",
+                      "expression": "SUM(`ventas_netas`)"
+                    },
+                    {
+                      "name": "categoria",
+                      "expression": "`categoria`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Ventas netas por categoría",
+                  "fields": []
+                }
+              },
+              "version": 1,
+              "jsonSpec": {
+                "type": "vega-lite",
+                "spec": "{\"$schema\":\"https://vega.github.io/schema/vega-lite/v6.json\",\"data\":{\"name\":\"databricks_query\"},\"width\":\"container\",\"height\":\"container\",\"config\":{\"autosize\":{\"type\":\"fit\",\"contains\":\"padding\"}},\"transform\":[{\"joinaggregate\":[{\"op\":\"sum\",\"field\":\"ventas\",\"as\":\"tot\"}]},{\"calculate\":\"datum.ventas/datum.tot\",\"as\":\"pct\"},{\"calculate\":\"datum.categoria + ' ' + format(datum.pct,'.1%')\",\"as\":\"lbl\"}],\"encoding\":{\"theta\":{\"field\":\"ventas\",\"type\":\"quantitative\",\"stack\":true},\"order\":{\"field\":\"ventas\",\"type\":\"quantitative\",\"sort\":\"descending\"},\"color\":{\"field\":\"categoria\",\"type\":\"nominal\",\"sort\":{\"field\":\"ventas\",\"op\":\"sum\",\"order\":\"descending\"},\"scale\":{\"range\":[\"#1F6FEB\",\"#14B8A6\",\"#F59E0B\",\"#EF4444\",\"#8B5CF6\",\"#64748B\",\"#EC4899\",\"#84CC16\"]},\"legend\":{\"title\":\"Categoría\",\"orient\":\"right\"}}},\"layer\":[{\"mark\":{\"type\":\"arc\",\"innerRadius\":45,\"outerRadius\":85,\"stroke\":\"#ffffff\",\"strokeWidth\":1},\"encoding\":{\"tooltip\":[{\"field\":\"categoria\",\"type\":\"nominal\",\"title\":\"Categoría\"},{\"field\":\"ventas\",\"type\":\"quantitative\",\"title\":\"Ventas netas\",\"format\":\",.2f\"},{\"field\":\"pct\",\"type\":\"quantitative\",\"title\":\"Participación\",\"format\":\".1%\"}]}},{\"mark\":{\"type\":\"text\",\"radius\":108,\"fontSize\":11},\"encoding\":{\"text\":{\"field\":\"lbl\",\"type\":\"nominal\"}}}]}"
+              },
+              "widgetType": "custom-vega-viz",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "ventas"
+                  },
+                  {
+                    "fieldName": "categoria"
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 14,
+            "width": 6,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "donut_ventas_tipo_cliente",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "37c7d4bd",
+                  "fields": [
+                    {
+                      "name": "tipo_cliente",
+                      "expression": "`tipo_cliente`"
+                    },
+                    {
+                      "name": "ventas",
+                      "expression": "SUM(`ventas_netas`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Ventas netas por tipo de cliente"
+              },
+              "jsonSpec": {
+                "type": "vega-lite",
+                "spec": "{\"$schema\":\"https://vega.github.io/schema/vega-lite/v6.json\",\"data\":{\"name\":\"databricks_query\"},\"width\":\"container\",\"height\":\"container\",\"config\":{\"autosize\":{\"type\":\"fit\",\"contains\":\"padding\"}},\"transform\":[{\"joinaggregate\":[{\"op\":\"sum\",\"field\":\"ventas\",\"as\":\"tot\"}]},{\"calculate\":\"datum.ventas/datum.tot\",\"as\":\"pct\"},{\"calculate\":\"datum.tipo_cliente + ' ' + format(datum.pct,'.1%')\",\"as\":\"lbl\"}],\"encoding\":{\"theta\":{\"field\":\"ventas\",\"type\":\"quantitative\",\"stack\":true},\"order\":{\"field\":\"ventas\",\"type\":\"quantitative\",\"sort\":\"descending\"},\"color\":{\"field\":\"tipo_cliente\",\"type\":\"nominal\",\"sort\":{\"field\":\"ventas\",\"op\":\"sum\",\"order\":\"descending\"},\"scale\":{\"range\":[\"#1F6FEB\",\"#14B8A6\",\"#F59E0B\",\"#EF4444\",\"#8B5CF6\",\"#64748B\",\"#EC4899\",\"#84CC16\"]},\"legend\":{\"title\":\"Tipo de cliente\",\"orient\":\"right\"}}},\"layer\":[{\"mark\":{\"type\":\"arc\",\"innerRadius\":45,\"outerRadius\":85,\"stroke\":\"#ffffff\",\"strokeWidth\":1},\"encoding\":{\"tooltip\":[{\"field\":\"tipo_cliente\",\"type\":\"nominal\",\"title\":\"Tipo de cliente\"},{\"field\":\"ventas\",\"type\":\"quantitative\",\"title\":\"Ventas netas\",\"format\":\",.2f\"},{\"field\":\"pct\",\"type\":\"quantitative\",\"title\":\"Participación\",\"format\":\".1%\"}]}},{\"mark\":{\"type\":\"text\",\"radius\":108,\"fontSize\":11},\"encoding\":{\"text\":{\"field\":\"lbl\",\"type\":\"nominal\"}}}]}"
+              },
+              "version": 1,
+              "widgetType": "custom-vega-viz",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "tipo_cliente"
+                  },
+                  {
+                    "fieldName": "ventas"
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 14,
+            "width": 6,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "bar_ventas_almacen",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "6fb1a5ca",
+                  "fields": [
+                    {
+                      "name": "sum(ventas_netas)",
+                      "expression": "SUM(`ventas_netas`)"
+                    },
+                    {
+                      "name": "nombre_almacen",
+                      "expression": "`nombre_almacen`"
+                    }
+                  ],
+                  "disaggregated": false,
+                  "orders": [
+                    {
+                      "direction": "DESC",
+                      "expression": "SUM(`ventas_netas`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Ventas netas por almacén"
+              },
+              "version": 3,
+              "mark": {
+                "colors": [
+                  "#1F6FEB"
+                ]
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "sum(ventas_netas)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 2
+                    },
+                    "hideGroupSeparator": false
+                  },
+                  "displayName": "Ventas netas",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "nombre_almacen",
+                  "displayName": "Almacén",
+                  "scale": {
+                    "type": "categorical",
+                    "categorySize": {
+                      "type": "number-of-categories",
+                      "number": 20
+                    },
+                    "sort": {
+                      "by": "measure-reversed",
+                      "measure": {
+                        "fieldName": "sum(ventas_netas)"
+                      }
+                    }
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 22,
+            "width": 12,
+            "height": 10
+          }
+        },
+        {
+          "widget": {
+            "name": "bar_top10_clientes",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "37c7d4bd",
+                  "fields": [
+                    {
+                      "name": "sum(ventas_netas)",
+                      "expression": "SUM(`ventas_netas`)"
+                    },
+                    {
+                      "name": "nombre",
+                      "expression": "`nombre`"
+                    }
+                  ],
+                  "disaggregated": false,
+                  "orders": [
+                    {
+                      "direction": "DESC",
+                      "expression": "SUM(`ventas_netas`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Top 10 clientes por ventas netas"
+              },
+              "version": 3,
+              "mark": {
+                "colors": [
+                  "#1F6FEB"
+                ]
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "sum(ventas_netas)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 2
+                    },
+                    "hideGroupSeparator": false
+                  },
+                  "displayName": "Ventas netas",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "nombre",
+                  "displayName": "Cliente",
+                  "scale": {
+                    "type": "categorical",
+                    "categorySize": {
+                      "type": "number-of-categories",
+                      "number": 10
+                    },
+                    "sort": {
+                      "by": "measure-reversed",
+                      "measure": {
+                        "fieldName": "sum(ventas_netas)"
+                      }
+                    }
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 32,
+            "width": 12,
+            "height": 8
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "bdb2d49f",
+      "displayName": "Análisis de Inventario",
+      "layout": [
+        {
+          "widget": {
+            "name": "kpi_stock_total_disponible",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_inventario_resumen",
+                  "fields": [
+                    {
+                      "name": "stock_total_disponible",
+                      "expression": "`stock_total_disponible`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Stock total disponible"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "stock_total_disponible",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 0
+                    },
+                    "hideGroupSeparator": false
+                  },
+                  "displayName": "Stock total disponible"
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_stock_minimo_requerido",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_inventario_resumen",
+                  "fields": [
+                    {
+                      "name": "stock_total_minimo",
+                      "expression": "`stock_total_minimo`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Stock mínimo requerido"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "stock_total_minimo",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 0
+                    },
+                    "hideGroupSeparator": false
+                  },
+                  "displayName": "Stock mínimo requerido"
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 0,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_combinaciones_criticas",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_inventario_resumen",
+                  "fields": [
+                    {
+                      "name": "combinaciones_criticas",
+                      "expression": "`combinaciones_criticas`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Combinaciones críticas"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "combinaciones_criticas",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 0
+                    },
+                    "hideGroupSeparator": false
+                  },
+                  "displayName": "Combinaciones críticas"
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 0,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_porcentaje_critico",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_inventario_resumen",
+                  "fields": [
+                    {
+                      "name": "porcentaje_critico",
+                      "expression": "`porcentaje_critico`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Porcentaje de combinaciones críticas"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "porcentaje_critico",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 2
+                    },
+                    "hideGroupSeparator": false
+                  },
+                  "formatTemplate": "{{ @formatted }}%",
+                  "displayName": "Porcentaje de combinaciones críticas"
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 9,
+            "y": 0,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "bar_stock_vs_minimo_almacen",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_inventario_almacenes",
+                  "fields": [
+                    {
+                      "name": "nombre_almacen",
+                      "expression": "`nombre_almacen`"
+                    },
+                    {
+                      "name": "pct",
+                      "expression": "AVG(`porcentaje_critico`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Nivel de riesgo de inventario por almacén",
+                  "fields": []
+                }
+              },
+              "version": 1,
+              "jsonSpec": {
+                "type": "vega-lite",
+                "spec": "{\"$schema\":\"https://vega.github.io/schema/vega-lite/v6.json\",\"data\":{\"name\":\"databricks_query\"},\"width\":\"container\",\"height\":\"container\",\"config\":{\"autosize\":{\"type\":\"fit\",\"contains\":\"padding\"}},\"transform\":[{\"calculate\":\"toNumber(datum.pct)\",\"as\":\"p\"},{\"calculate\":\"datum.p >= 7 ? 'Alto (≥ 7%)' : (datum.p >= 5 ? 'Medio (5% - 7%)' : 'Bajo (< 5%)')\",\"as\":\"nivel\"},{\"calculate\":\"format(datum.p,'.2f') + '%'\",\"as\":\"lbl\"}],\"layer\":[{\"mark\":{\"type\":\"bar\",\"cornerRadiusEnd\":2},\"encoding\":{\"y\":{\"field\":\"nombre_almacen\",\"type\":\"nominal\",\"sort\":\"-x\",\"title\":\"Almacén\",\"axis\":{\"labelLimit\":220}},\"x\":{\"field\":\"p\",\"type\":\"quantitative\",\"title\":\"Porcentaje de combinaciones críticas (%)\",\"scale\":{\"domain\":[0,10]},\"axis\":{\"values\":[0,1,2,3,4,5,6,7,8,9,10],\"labelExpr\":\"datum.value + '%'\"}},\"color\":{\"field\":\"nivel\",\"type\":\"nominal\",\"title\":\"Nivel de riesgo\",\"scale\":{\"domain\":[\"Bajo (< 5%)\",\"Medio (5% - 7%)\",\"Alto (≥ 7%)\"],\"range\":[\"#22A06B\",\"#F59E0B\",\"#E5484D\"]},\"legend\":{\"orient\":\"top\"}},\"tooltip\":[{\"field\":\"nombre_almacen\",\"title\":\"Almacén\"},{\"field\":\"lbl\",\"title\":\"% crítico\"},{\"field\":\"nivel\",\"title\":\"Nivel de riesgo\"}]}},{\"mark\":{\"type\":\"text\",\"align\":\"left\",\"dx\":4,\"fontSize\":11,\"fontWeight\":\"bold\",\"fill\":\"#8A94A6\"},\"encoding\":{\"y\":{\"field\":\"nombre_almacen\",\"type\":\"nominal\",\"sort\":\"-x\"},\"x\":{\"field\":\"p\",\"type\":\"quantitative\"},\"text\":{\"field\":\"lbl\"}}}]}"
+              },
+              "disableDefaultInteractivity": true,
+              "widgetType": "custom-vega-viz",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "nombre_almacen"
+                  },
+                  {
+                    "fieldName": "pct"
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 3,
+            "width": 12,
+            "height": 14
+          }
+        },
+        {
+          "widget": {
+            "name": "bar_top10_productos_stock",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_inventario_productos",
+                  "fields": [
+                    {
+                      "name": "sum(stock_disponible)",
+                      "expression": "SUM(`stock_disponible`)"
+                    },
+                    {
+                      "name": "nombre_producto",
+                      "expression": "`nombre_producto`"
+                    }
+                  ],
+                  "disaggregated": false,
+                  "orders": [
+                    {
+                      "direction": "DESC",
+                      "expression": "SUM(`stock_disponible`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Top 10 productos con mayor stock disponible"
+              },
+              "version": 3,
+              "mark": {
+                "colors": [
+                  "#1F6FEB"
+                ]
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "sum(stock_disponible)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 0
+                    },
+                    "hideGroupSeparator": false
+                  },
+                  "displayName": "Stock disponible",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "nombre_producto",
+                  "displayName": "Producto",
+                  "scale": {
+                    "type": "categorical",
+                    "categorySize": {
+                      "type": "number-of-categories",
+                      "number": 10
+                    },
+                    "sort": {
+                      "by": "measure-reversed",
+                      "measure": {
+                        "fieldName": "sum(stock_disponible)"
+                      }
+                    }
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 17,
+            "width": 12,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "bar_top10_productos_criticos",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_inventario_productos",
+                  "fields": [
+                    {
+                      "name": "sum(combinaciones_criticas)",
+                      "expression": "SUM(`combinaciones_criticas`)"
+                    },
+                    {
+                      "name": "nombre_producto",
+                      "expression": "`nombre_producto`"
+                    }
+                  ],
+                  "filters": [
+                    {
+                      "expression": "`combinaciones_criticas` > 0"
+                    }
+                  ],
+                  "disaggregated": false,
+                  "orders": [
+                    {
+                      "direction": "DESC",
+                      "expression": "SUM(`combinaciones_criticas`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Top 10 productos con más combinaciones críticas"
+              },
+              "version": 3,
+              "mark": {
+                "colors": [
+                  "#E5484D"
+                ]
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "sum(combinaciones_criticas)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 0
+                    },
+                    "hideGroupSeparator": false
+                  },
+                  "displayName": "Combinaciones críticas",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "nombre_producto",
+                  "displayName": "Producto",
+                  "scale": {
+                    "type": "categorical",
+                    "categorySize": {
+                      "type": "number-of-categories",
+                      "number": 10
+                    },
+                    "sort": {
+                      "by": "measure-reversed",
+                      "measure": {
+                        "fieldName": "sum(combinaciones_criticas)"
+                      }
+                    }
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 25,
+            "width": 12,
+            "height": 8
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    }
+  ],
+  "uiSettings": {
+    "theme": {
+      "widgetHeaderAlignment": "ALIGNMENT_UNSPECIFIED"
+    },
+    "applyModeEnabled": false
+  }
+}

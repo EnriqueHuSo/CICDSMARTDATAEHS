@@ -564,6 +564,58 @@ jobs:
           echo "ERROR: se agotó el tiempo de monitoreo ($max_wait segundos). La ejecución podría continuar en Databricks."
           exit 1
 
+      - name: Deploy AI/BI Dashboard to Production
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          DASHBOARD_SOURCE_DIR="dashboard"
+          DASHBOARD_DEST_DIR="/proyecto_final_databricks/dashboard"
+
+          # Buscar el archivo del dashboard
+          dashboard_files=("$DASHBOARD_SOURCE_DIR"/*.lvdash.json)
+
+          if [[ ! -f "${dashboard_files[0]}" ]]; then
+            echo "ERROR: no se encontró el archivo .lvdash.json."
+            exit 1
+          fi
+
+          if [[ "${#dashboard_files[@]}" -ne 1 ]]; then
+            echo "ERROR: se esperaba exactamente un archivo .lvdash.json."
+            exit 1
+          fi
+
+          DASHBOARD_FILE="${dashboard_files[0]}"
+          DASHBOARD_NAME=$(basename "$DASHBOARD_FILE")
+          DASHBOARD_DEST="$DASHBOARD_DEST_DIR/$DASHBOARD_NAME"
+
+          echo "Dashboard encontrado: $DASHBOARD_NAME"
+
+          # Crear carpeta de destino en producción
+          curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer $DEST_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data "$(jq -n --arg path "$DASHBOARD_DEST_DIR" '{path:$path}')" \
+            "$DEST_HOST/api/2.0/workspace/mkdirs"
+
+          # Importar dashboard
+          echo "Importando dashboard en producción..."
+
+          response=$(curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer $DEST_TOKEN" \
+            --form "path=$DASHBOARD_DEST" \
+            --form "format=AUTO" \
+            --form "overwrite=true" \
+            --form "content=@$DASHBOARD_FILE" \
+            "$DEST_HOST/api/2.0/workspace/import")
+
+          echo "Respuesta de Databricks:"
+          echo "$response"
+
+          echo "Dashboard importado correctamente."
+
       - name: Cleanup temporary files
         if: always()
         run: |
